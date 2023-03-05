@@ -1,0 +1,65 @@
+- name: s3
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+
+    - name: create bucket
+      amazon.aws.s3_bucket:
+        name: "{{ item }}"
+        state: present
+        region: ap-southeast-3
+      loop: [nuruls3,dhonas3]
+
+    - name: enable public access
+      amazon.aws.s3_bucket:
+        name: "{{ item }}"
+        state: present
+        public_access:
+          block_public_policy: false
+      loop: [nuruls3,dhonas3]
+
+    - name: add policy to bucket
+      amazon.aws.s3_bucket:
+        name: "{{ item.bucket }}"
+        policy: "{{ item.policy }}"
+      loop:
+        - { bucket: "nuruls3", policy: "{{ lookup('file','nuruls3/nuruls3-policy.json') }}" }
+        - { bucket: "dhonas3", policy: "{{ lookup('file','dhonas3/dhonas3-policy.json') }}" }
+
+    - name: upload object to bucket
+      community.aws.s3_sync:
+        bucket: "{{ item.bucket }}"
+        file_root: "{{ item.src }}"
+        permission: public-read
+        include: "*"
+        exclude: "404.html,*.json"
+      loop:
+        - { bucket: "nuruls3", src: "nuruls3" }
+        - { bucket: "dhonas3", src: "dhonas3" }
+
+    - name: upload object to bucket with specific key prefix
+      community.aws.s3_sync:
+        bucket: "{{ item.bucket }}"
+        file_root: "{{ item.src }}"
+        permission: public-read
+        key_prefix: "{{ item.dst }}"
+      loop: 
+        - { bucket: "nuruls3", src: "nuruls3/404.html", dst: "error" }
+        - { bucket: "dhonas3", src: "dhonas3/404.html", dst: "error" }
+
+    - name: enable static website
+      community.aws.s3_website:
+        name: "{{ item }}"
+        suffix: index.html
+        error_key: error/404.html
+        state: present
+      loop: [nuruls3,dhonas3]
+
+    - name: delete bucket
+      amazon.aws.s3_bucket:
+        name: "{{ item }}"
+        state: absent
+        force: yes
+      loop: [nuruls3,dhonas3]
+      tags: delete_s3
